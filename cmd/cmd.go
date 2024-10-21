@@ -48,6 +48,7 @@ type KubeStraceCommandArgs struct {
 	logLevelStr     *string
 	logFile         *string
 	outputDirectory *string
+	traceExpression *string
 }
 type KubeStraceCommand struct {
 	KubeStraceCommandArgs
@@ -79,6 +80,7 @@ func NewKubeStraceDefaults() KubeStraceCommandArgs {
 		traceTimeoutStr: stringptr("0"),
 		outputDirectory: stringptr("strace-collection"),
 		logFile:         stringptr("-"),
+		traceExpression: stringptr(""),
 	}
 	if Version.Tag != "" {
 		kCmd.traceImage = stringptr("quay.io/mwasher/crictl:" + Version.Tag)
@@ -130,6 +132,7 @@ func NewKubeStraceCommand(appName string) *cobra.Command {
 	flags.StringVar(kCmd.traceImage, "image", *kCmd.traceImage, "The trace image for use when performing the strace.")
 	flags.StringVar(kCmd.traceTimeoutStr, "trace-timeout", *kCmd.traceTimeoutStr, "The length of time to capture the strace output for.")
 	flags.StringVarP(kCmd.outputDirectory, "output", "o", *kCmd.outputDirectory, "The directory to store the strace data.")
+	flags.StringVarP(kCmd.traceExpression, "expr", "e", *kCmd.traceExpression, "A qualifying expression which modifies which events to trace or how to trace them.")
 
 	// Logging
 	logLevels := func() []string {
@@ -265,7 +268,7 @@ func (kCmd *KubeStraceCommand) Run() error {
 	var tracerWaitGroup sync.WaitGroup
 	for _, targetPod := range kCmd.targetPods {
 		pod := targetPod
-		tracer := kstrace.NewKStracer(kCmd.clientset, kCmd.restConfig, *kCmd.traceImage, &pod, ns.Name, *kCmd.socketPath, kCmd.traceTimeout, *kCmd.outputDirectory)
+		tracer := kstrace.NewKStracer(kCmd.clientset, kCmd.restConfig, *kCmd.traceImage, &pod, ns.Name, *kCmd.socketPath, kCmd.traceTimeout, *kCmd.outputDirectory, *kCmd.traceExpression)
 		kCmd.tracers = append(kCmd.tracers, tracer)
 	}
 

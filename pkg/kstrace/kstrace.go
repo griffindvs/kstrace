@@ -33,6 +33,7 @@ type KStracer struct {
 	socketPath        string
 	collectionTimeout time.Duration
 	outputDirectory   string
+	traceExpression   string
 }
 
 type PrivilegedPodOptions struct {
@@ -49,7 +50,7 @@ type Tracer interface {
 }
 
 func NewKStracer(clientset kubernetes.Interface, restConfig *rest.Config, traceImage string, targetPod *corev1.Pod, namespace string, socketPath string,
-	timeout time.Duration, outputDirectory string) Tracer {
+	timeout time.Duration, outputDirectory string, traceExpression string) Tracer {
 	straceObject := KStracer{
 		traceImage:        traceImage,
 		traceNamespace:    namespace,
@@ -59,6 +60,7 @@ func NewKStracer(clientset kubernetes.Interface, restConfig *rest.Config, traceI
 		socketPath:        socketPath,
 		collectionTimeout: timeout,
 		outputDirectory:   outputDirectory,
+		traceExpression:   traceExpression,
 	}
 
 	return &straceObject
@@ -276,7 +278,12 @@ func (tracer *KStracer) CreateStracePod(ctx context.Context, options PrivilegedP
 }
 
 func (tracer *KStracer) StartStrace(targetPID int64, iostreams *genericclioptions.IOStreams) error {
-	command := fmt.Sprintf("strace -tfp %d", targetPID)
+	expr := ""
+	if tracer.traceExpression != "" {
+		expr = fmt.Sprintf("-e %s ", tracer.traceExpression)
+	}
+
+	command := fmt.Sprintf("strace -tf %s-p %d", expr, targetPID)
 
 	// Configure Command Timeout
 	if tracer.collectionTimeout != 0 {
