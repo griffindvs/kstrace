@@ -1,7 +1,7 @@
 FROM docker.io/alpine:latest
 
 # Install Crictl and strace
-RUN VERSION="v1.22.0" && \
+RUN VERSION="v1.31.1" && \
     wget https://github.com/kubernetes-sigs/cri-tools/releases/download/$VERSION/crictl-$VERSION-linux-amd64.tar.gz && \
     tar zxvf crictl-$VERSION-linux-amd64.tar.gz -C /bin  && \
     rm -f crictl-$VERSION-linux-amd64.tar.gz && \

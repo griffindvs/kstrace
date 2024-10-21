@@ -1,6 +1,6 @@
 module github.com/michaelwasher/kube-strace
 
-go 1.17
+go 1.23
 
 require github.com/inconshreveable/mousetrap v1.0.0 // indirect
 
