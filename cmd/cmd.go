@@ -49,6 +49,7 @@ type KubeStraceCommandArgs struct {
 	logFile         *string
 	outputDirectory *string
 	traceExpression *string
+	labelSelector   *string
 }
 type KubeStraceCommand struct {
 	KubeStraceCommandArgs
@@ -66,6 +67,8 @@ type KubeStraceCommand struct {
 	builder         *resource.Builder
 	restConfig      *rest.Config
 	kubeConfigFlags *genericclioptions.ConfigFlags
+
+	namespace string
 }
 
 func stringptr(val string) *string {
@@ -81,6 +84,7 @@ func NewKubeStraceDefaults() KubeStraceCommandArgs {
 		outputDirectory: stringptr("strace-collection"),
 		logFile:         stringptr("-"),
 		traceExpression: stringptr(""),
+		labelSelector:   stringptr(""),
 	}
 	if Version.Tag != "" {
 		kCmd.traceImage = stringptr("quay.io/mwasher/crictl:" + Version.Tag)
@@ -133,6 +137,7 @@ func NewKubeStraceCommand(appName string) *cobra.Command {
 	flags.StringVar(kCmd.traceTimeoutStr, "trace-timeout", *kCmd.traceTimeoutStr, "The length of time to capture the strace output for.")
 	flags.StringVarP(kCmd.outputDirectory, "output", "o", *kCmd.outputDirectory, "The directory to store the strace data.")
 	flags.StringVarP(kCmd.traceExpression, "expr", "e", *kCmd.traceExpression, "A qualifying expression which modifies which events to trace or how to trace them.")
+	flags.StringVarP(kCmd.labelSelector, "label", "l", *kCmd.labelSelector, "A Kubernetes label selector to identifying resources for tracing.")
 
 	// Logging
 	logLevels := func() []string {
@@ -209,9 +214,13 @@ func (kCmd *KubeStraceCommand) Complete(cmd *cobra.Command, args []string) error
 		return err
 	}
 
-	kCmd.builder = f.NewBuilder().
-		WithScheme(scheme.Scheme, scheme.Scheme.PrioritizedVersionsAllGroups()...).
-		ResourceNames("pod", args...).NamespaceParam(namespace).DefaultNamespace()
+	kCmd.namespace = namespace
+
+	if len(args) > 0 {
+		kCmd.builder = f.NewBuilder().
+			WithScheme(scheme.Scheme, scheme.Scheme.PrioritizedVersionsAllGroups()...).
+			ResourceNames("pod", args...).NamespaceParam(namespace).DefaultNamespace()
+	}
 
 	return nil
 }
@@ -219,10 +228,34 @@ func (kCmd *KubeStraceCommand) Complete(cmd *cobra.Command, args []string) error
 func (kCmd *KubeStraceCommand) Validate() error {
 	var err error
 
-	// Collect target pods
-	kCmd.targetPods, err = processResources(kCmd.builder, kCmd.clientset)
-	if err != nil {
-		return err
+	// Collect target pods by label if specified
+	if kCmd.labelSelector != nil {
+		labelSelector := strings.Split(*kCmd.labelSelector, "=")
+		if len(labelSelector) != 2 {
+			return fmt.Errorf("invalid label selector: %s", *kCmd.labelSelector)
+		}
+
+		labelSet := labels.Set(map[string]string{
+			labelSelector[0]: labelSelector[1],
+		})
+
+		queryResp, err := getPodsForLabel(&labelSet, kCmd.namespace, kCmd.clientset)
+		if err != nil {
+			log.Infof("unable to get list of Pods for label selector %s. %v", *kCmd.labelSelector, err)
+			return err
+		}
+
+		kCmd.targetPods = append(kCmd.targetPods, queryResp.Items...)
+	}
+
+	// Collect target pods by resource name
+	if kCmd.builder != nil {
+		targetPods, err := processResources(kCmd.builder, kCmd.clientset)
+		if err != nil {
+			return err
+		}
+
+		kCmd.targetPods = append(kCmd.targetPods, targetPods...)
 	}
 
 	// Check flags are valid
